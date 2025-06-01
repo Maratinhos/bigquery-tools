@@ -15,6 +15,7 @@ import type { BigQueryConfigItem } from '../services/bigQueryConfigService';
 import { getTableSchema, updateSchemaDescription, getAllSavedSchemas } from '../services/schemaService';
 import type { FieldSchema, SavedObject } from '../services/schemaService';
 
+
 interface DescribedField extends FieldSchema {
   description: string;
 }
