@@ -20,8 +20,8 @@ def create_app(config_class=Config):
     # Import and register blueprints here
     from .routes.auth import auth_bp
     from .routes.api import api_bp
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(api_bp)
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(api_bp, url_prefix='/api')
 
     # Import models to ensure they are known to Flask-Migrate
     from . import models
