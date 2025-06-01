@@ -21,8 +21,8 @@ const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const response = await login(email, password);
-      if (response.access_token) {
-        localStorage.setItem('authToken', response.access_token);
+      if (response.token) {
+        localStorage.setItem('authToken', response.token);
         // TODO: Redirect to a protected page, e.g., dashboard
         // For now, let's assume '/' is the main protected area or a dashboard
         navigate('/');
