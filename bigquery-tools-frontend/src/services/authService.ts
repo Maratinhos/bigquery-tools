@@ -3,7 +3,7 @@ import apiClient from '../config/api'; // apiClient from the previous step
 // Define interfaces for expected request/response structures for clarity
 interface AuthResponse {
   message: string;
-  access_token?: string; // Token is optional, present on success
+  token?: string; // Token is optional, present on success
   user_id?: string;
   // Add other fields if your backend returns them, e.g., refresh_token, user details
 }
