@@ -196,6 +196,51 @@ class TestApiRoutes(BaseIntegrationTestCase):
             self.assertEqual(response.status_code, 422) # Unprocessable Entity
             self.assertIn("Could not generate SQL query", data["message"])
 
+    # --- Tests for GET /api/config ---
+    def test_get_configs_success_and_isolation(self):
+        # Create configs for the primary test user
+        config1_user1 = BigQueryConfig(user_id=self.user.id, connection_name="user1_conn1", gcp_key_json={"project_id": "test1"})
+        config2_user1 = BigQueryConfig(user_id=self.user.id, connection_name="user1_conn2", gcp_key_json={"project_id": "test2"})
+        db.session.add_all([config1_user1, config2_user1])
+
+        # Create another user and their config
+        other_user = User(email=f"otheruser_{uuid.uuid4()}@example.com")
+        other_user.set_password("password")
+        db.session.add(other_user)
+        db.session.commit() # Commit to get other_user.id
+        config_other_user = BigQueryConfig(user_id=other_user.id, connection_name="other_user_conn", gcp_key_json={"project_id": "test_other"})
+        db.session.add(config_other_user)
+        db.session.commit()
+
+        response = self.client.get('/api/config', headers=self.auth_headers)
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2) # Should only get configs for self.user
+
+        # Verify the content of the returned configs
+        returned_conn_names = {item['connection_name'] for item in data}
+        expected_conn_names = {"user1_conn1", "user1_conn2"}
+        self.assertEqual(returned_conn_names, expected_conn_names)
+
+        for item in data:
+            self.assertIn('id', item)
+            self.assertIsInstance(item['id'], str) # ID should be stringified
+            if item['connection_name'] == "user1_conn1":
+                self.assertEqual(item['id'], str(config1_user1.id))
+            elif item['connection_name'] == "user1_conn2":
+                self.assertEqual(item['id'], str(config2_user1.id))
+
+    def test_get_configs_no_configs_for_user(self):
+        # No configs created for self.user
+        response = self.client.get('/api/config', headers=self.auth_headers)
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 0)
+
 
 if __name__ == '__main__':
     unittest.main()
