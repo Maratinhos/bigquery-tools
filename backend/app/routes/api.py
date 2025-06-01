@@ -278,6 +278,38 @@ def update_table_schema_description():
         return jsonify(message=f"An unexpected server error occurred: {str(e)}"), 500
 
 
+@api_bp.route('/objects_with_fields', methods=['GET'])
+@token_required_custom
+def get_objects_with_fields():
+    current_user = get_current_user_from_jwt()
+    try:
+        user_objects = Object.query.filter_by(user_id=current_user.id).all()
+        result = []
+        for obj in user_objects:
+            fields_list = []
+            for field in obj.fields: # Accessing the related Field objects
+                fields_list.append({
+                    "id": str(field.id),
+                    "field_name": field.field_name,
+                    "field_description": field.field_description if field.field_description is not None else ""
+                })
+
+            result.append({
+                "id": str(obj.id),
+                "connection_id": str(obj.connection_id),
+                "object_name": obj.object_name,
+                "object_description": obj.object_description if obj.object_description is not None else "",
+                "fields": fields_list
+            })
+        return jsonify(result), 200
+    except SQLAlchemyError as e:
+        current_app.logger.error(f"Database error in /objects_with_fields: {str(e)}")
+        return jsonify(message=f"A database error occurred: {str(e)}"), 500
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error in /objects_with_fields: {str(e)}")
+        return jsonify(message=f"An unexpected server error occurred: {str(e)}"), 500
+
+
 @api_bp.route('/generate_sql_from_natural_language', methods=['POST'])
 @token_required_custom
 def generate_sql_from_natural_language():
@@ -295,48 +327,74 @@ def generate_sql_from_natural_language():
         return jsonify(message="user_request is required."), 400
     if not connection_id:
         return jsonify(message="connection_id is required."), 400
-    if not object_names or not isinstance(object_names, list) or not all(isinstance(name, str) for name in object_names):
-        return jsonify(message="object_names must be a list of strings."), 400
-    if not object_names: # Check if list is empty
-        return jsonify(message="object_names list cannot be empty."), 400
+
+    # Validate object_names if provided
+    if object_names is not None: # Allows object_names to be explicitly null or an empty list
+        if not isinstance(object_names, list) or not all(isinstance(name, str) for name in object_names):
+            return jsonify(message="If provided, object_names must be a list of strings."), 400
 
     # Fetch the BigQueryConfig to ensure the connection_id is valid for the user
-    # This config isn't directly used for Gemini, but validates user's access to the connection context
     config = BigQueryConfig.query.filter_by(id=connection_id, user_id=current_user.id).first()
     if not config:
         return jsonify(message="BigQuery configuration not found or access denied."), 404
 
     objects_with_fields_data = []
-    for obj_name_full in object_names:
-        # We need to find the Object and its Fields from our database
-        # The connection_id for the Object model is config.id (UUID of BigQueryConfig)
-        db_object = Object.query.filter_by(
-            user_id=current_user.id,
-            connection_id=config.id,
-            object_name=obj_name_full
-        ).first()
+    # If object_names is provided and not empty, use them
+    if object_names and len(object_names) > 0:
+        current_app.logger.info(f"Processing request for specific object_names: {object_names} for user {current_user.id} and connection {config.id}")
+        for obj_name_full in object_names:
+            db_object = Object.query.filter_by(
+                user_id=current_user.id,
+                connection_id=config.id,
+                object_name=obj_name_full
+            ).first()
 
-        obj_data = {'object_name': obj_name_full, 'object_description': None, 'fields': []}
-        if db_object:
-            obj_data['object_description'] = db_object.object_description
-            for db_field in db_object.fields: # Assumes db_object.fields is the relationship
-                obj_data['fields'].append({
-                    'field_name': db_field.field_name,
-                    'field_description': db_field.field_description
-                })
+            obj_data = {'object_name': obj_name_full, 'object_description': None, 'fields': []}
+            if db_object:
+                obj_data['object_description'] = db_object.object_description
+                for db_field in db_object.fields:
+                    obj_data['fields'].append({
+                        'field_name': db_field.field_name,
+                        'field_description': db_field.field_description
+                    })
+            else:
+                current_app.logger.warn(f"Object '{obj_name_full}' not found in local metadata for user {current_user.id} and connection {config.id} when specific list provided.")
+            objects_with_fields_data.append(obj_data)
+
+        if not objects_with_fields_data: # Should not happen if object_names was not empty, but as a safeguard
+             current_app.logger.warn(f"No schema data could be prepared for the given object_names: {object_names} (user {current_user.id}, conn {config.id})")
+             # Return 400 or let Gemini handle empty list? For now, let Gemini handle it.
+    else:
+        # If object_names is missing, null, or an empty list, fetch all objects for the connection
+        current_app.logger.info(f"Processing request for all objects for user {current_user.id} and connection {config.id}")
+        all_db_objects = Object.query.filter_by(user_id=current_user.id, connection_id=config.id).all()
+
+        if not all_db_objects:
+            current_app.logger.warn(f"No objects found in local metadata for user {current_user.id} and connection {config.id} when fetching all.")
+            # objects_with_fields_data will remain empty, Gemini will handle it.
         else:
-            # Option: If an object is not found in our DB, we could try to get its schema directly from BQ
-            # For now, we'll just send what we have, or indicate it's not in our metadata.
-            # The prompt will show "No field information available" if 'fields' is empty.
-            current_app.logger.warn(f"Object '{obj_name_full}' not found in local metadata for user {current_user.id} and connection {config.id}. Schema for it won't be detailed in prompt unless fetched live.")
-            # To make it more robust, one could call the /api/table_schema endpoint internally here
-            # or add a direct BQ schema fetch if local metadata is missing.
-            # For this task, we rely on previously stored metadata.
-            pass
-        objects_with_fields_data.append(obj_data)
+            for db_object in all_db_objects:
+                obj_data = {
+                    'object_name': db_object.object_name,
+                    'object_description': db_object.object_description,
+                    'fields': []
+                }
+                for db_field in db_object.fields:
+                    obj_data['fields'].append({
+                        'field_name': db_field.field_name,
+                        'field_description': db_field.field_description
+                    })
+                objects_with_fields_data.append(obj_data)
 
-    if not objects_with_fields_data: # Should not happen if object_names is not empty, but as a safeguard
-        return jsonify(message="No schema information could be prepared for the given object_names."), 400
+    # It's possible objects_with_fields_data is empty here if no specific objects found,
+    # or no objects at all for the connection. This is acceptable for Gemini.
+    # A more user-friendly approach might be to return a 404 or specific message if it's empty.
+    # For now, we proceed as per current design.
+    if not objects_with_fields_data:
+        current_app.logger.info(f"No schema information (objects_with_fields_data is empty) being sent to Gemini for user {current_user.id}, connection {config.id}.")
+        # Consider if a more explicit error/message should be returned to the user here.
+        # For example: return jsonify(message="No schema information available for the selected connection or objects."), 404
+        # However, the current spec is to let Gemini handle it.
 
     # Initialize GeminiService
     # IMPORTANT: Using a hardcoded key for this task as requested.
