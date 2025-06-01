@@ -241,6 +241,228 @@ class TestApiRoutes(BaseIntegrationTestCase):
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 0)
 
+    # --- Tests for GET /api/objects_with_fields ---
+    def test_get_objects_with_fields_success(self):
+        # Create a BigQueryConfig for the user
+        bq_config = BigQueryConfig(user_id=self.user.id, connection_name="obj_field_conn", gcp_key_json={"p_id": "proj1"})
+        db.session.add(bq_config)
+        db.session.commit()
+
+        # Objects and Fields for the current user
+        obj1_user1 = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="dataset1.table1", object_description="Desc for obj1")
+        f1_obj1 = Field(object=obj1_user1, field_name="colA", field_description="Desc for colA")
+        f2_obj1 = Field(object=obj1_user1, field_name="colB", field_description="Desc for colB")
+
+        obj2_user1 = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="dataset1.table2", object_description=None) # Null description
+        f1_obj2 = Field(object=obj2_user1, field_name="colX", field_description=None) # Null description
+
+        db.session.add_all([obj1_user1, f1_obj1, f2_obj1, obj2_user1, f1_obj2])
+
+        # Object for another user to ensure filtering
+        other_user = User(email=f"otheruser_obj_{uuid.uuid4()}@example.com", password="password")
+        db.session.add(other_user)
+        db.session.commit()
+        other_bq_config = BigQueryConfig(user_id=other_user.id, connection_name="other_conn", gcp_key_json={})
+        db.session.add(other_bq_config)
+        db.session.commit()
+        obj_other_user = Object(user_id=other_user.id, connection_id=other_bq_config.id, object_name="otherdata.othertable")
+        db.session.add(obj_other_user)
+        db.session.commit()
+
+        response = self.client.get('/api/objects_with_fields', headers=self.auth_headers)
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2) # obj1_user1 and obj2_user1
+
+        # Sort by object_name for consistent checking
+        data.sort(key=lambda x: x['object_name'])
+
+        # Check obj1_user1
+        self.assertEqual(data[0]['object_name'], "dataset1.table1")
+        self.assertEqual(data[0]['object_description'], "Desc for obj1")
+        self.assertEqual(data[0]['connection_id'], str(bq_config.id))
+        self.assertEqual(len(data[0]['fields']), 2)
+        data[0]['fields'].sort(key=lambda x: x['field_name'])
+        self.assertEqual(data[0]['fields'][0]['field_name'], "colA")
+        self.assertEqual(data[0]['fields'][0]['field_description'], "Desc for colA")
+
+        # Check obj2_user1 (with null descriptions)
+        self.assertEqual(data[1]['object_name'], "dataset1.table2")
+        self.assertEqual(data[1]['object_description'], "") # Null description becomes empty string
+        self.assertEqual(len(data[1]['fields']), 1)
+        self.assertEqual(data[1]['fields'][0]['field_name'], "colX")
+        self.assertEqual(data[1]['fields'][0]['field_description'], "") # Null description becomes empty string
+
+    def test_get_objects_with_fields_no_objects(self):
+        response = self.client.get('/api/objects_with_fields', headers=self.auth_headers)
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 0)
+
+    def test_get_objects_with_fields_unauthenticated(self):
+        # Override auth_headers for this test
+        response = self.client.get('/api/objects_with_fields', headers={}) # No auth
+        self.assertEqual(response.status_code, 401) # Expecting 401 due to @token_required_custom
+
+    # --- Tests for modified POST /api/generate_sql_from_natural_language ---
+
+    @patch('backend.app.routes.api.GeminiService') # Patching GeminiService where it's used
+    def test_generate_sql_with_specific_object_names(self, MockGeminiService):
+        mock_gemini_instance = MockGeminiService.return_value
+        mock_gemini_instance.generate_sql_query.return_value = "SELECT * FROM specific.table;"
+
+        bq_config = BigQueryConfig(user_id=self.user.id, connection_name="gen_sql_specific_conn", gcp_key_json={})
+        obj1 = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="specific.table", object_description="Specific table desc")
+        f1_obj1 = Field(object=obj1, field_name="col1", field_description="Specific col1 desc")
+        obj2 = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="another.table", object_description="Another table desc")
+        f1_obj2 = Field(object=obj2, field_name="colA", field_description="Another colA desc")
+        db.session.add_all([bq_config, obj1, f1_obj1, obj2, f1_obj2])
+        db.session.commit()
+
+        payload = {
+            "user_request": "query for specific table",
+            "connection_id": str(bq_config.id),
+            "object_names": ["specific.table"]
+        }
+        response = self.client.post('/api/generate_sql_from_natural_language', headers=self.auth_headers, json=payload)
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["generated_sql"], "SELECT * FROM specific.table;")
+
+        mock_gemini_instance.generate_sql_query.assert_called_once()
+        call_args = mock_gemini_instance.generate_sql_query.call_args[0]
+        objects_data = call_args[1] # objects_with_fields_data
+
+        self.assertEqual(len(objects_data), 1)
+        self.assertEqual(objects_data[0]['object_name'], "specific.table")
+        self.assertEqual(objects_data[0]['object_description'], "Specific table desc")
+        self.assertEqual(len(objects_data[0]['fields']), 1)
+        self.assertEqual(objects_data[0]['fields'][0]['field_name'], "col1")
+
+    @patch('backend.app.routes.api.GeminiService')
+    def test_generate_sql_with_empty_object_names_uses_all_objects(self, MockGeminiService):
+        mock_gemini_instance = MockGeminiService.return_value
+        mock_gemini_instance.generate_sql_query.return_value = "SELECT * FROM all_tables;"
+
+        bq_config = BigQueryConfig(user_id=self.user.id, connection_name="gen_sql_empty_conn", gcp_key_json={})
+        obj1 = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="table_one", object_description="First table")
+        f1_obj1 = Field(object=obj1, field_name="f1_col1")
+        obj2 = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="table_two", object_description="Second table")
+        f1_obj2 = Field(object=obj2, field_name="f2_col1")
+        # Object for another connection (should not be included)
+        other_bq_config = BigQueryConfig(user_id=self.user.id, connection_name="other_conn_for_sql_gen", gcp_key_json={})
+        obj_other_conn = Object(user_id=self.user.id, connection_id=other_bq_config.id, object_name="other_conn.table")
+
+        db.session.add_all([bq_config, obj1, f1_obj1, obj2, f1_obj2, other_bq_config, obj_other_conn])
+        db.session.commit()
+
+        payload = {
+            "user_request": "query for all tables in connection",
+            "connection_id": str(bq_config.id),
+            "object_names": [] # Empty list
+        }
+        response = self.client.post('/api/generate_sql_from_natural_language', headers=self.auth_headers, json=payload)
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["generated_sql"], "SELECT * FROM all_tables;")
+
+        mock_gemini_instance.generate_sql_query.assert_called_once()
+        call_args = mock_gemini_instance.generate_sql_query.call_args[0]
+        objects_data = call_args[1]
+
+        self.assertEqual(len(objects_data), 2)
+        object_names_sent = {o['object_name'] for o in objects_data}
+        self.assertIn("table_one", object_names_sent)
+        self.assertIn("table_two", object_names_sent)
+        self.assertNotIn("other_conn.table", object_names_sent)
+
+    @patch('backend.app.routes.api.GeminiService')
+    def test_generate_sql_with_missing_object_names_uses_all_objects(self, MockGeminiService):
+        mock_gemini_instance = MockGeminiService.return_value
+        mock_gemini_instance.generate_sql_query.return_value = "SELECT * FROM all_tables_missing_key;"
+
+        bq_config = BigQueryConfig(user_id=self.user.id, connection_name="gen_sql_missing_key_conn", gcp_key_json={})
+        obj1 = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="key_table_one")
+        obj2 = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="key_table_two")
+        db.session.add_all([bq_config, obj1, obj2])
+        db.session.commit()
+
+        payload = {
+            "user_request": "query for all tables, object_names key missing",
+            "connection_id": str(bq_config.id)
+            # object_names key is omitted
+        }
+        response = self.client.post('/api/generate_sql_from_natural_language', headers=self.auth_headers, json=payload)
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["generated_sql"], "SELECT * FROM all_tables_missing_key;")
+
+        mock_gemini_instance.generate_sql_query.assert_called_once()
+        call_args = mock_gemini_instance.generate_sql_query.call_args[0]
+        objects_data = call_args[1]
+
+        self.assertEqual(len(objects_data), 2)
+        object_names_sent = {o['object_name'] for o in objects_data}
+        self.assertIn("key_table_one", object_names_sent)
+        self.assertIn("key_table_two", object_names_sent)
+
+    @patch('backend.app.routes.api.GeminiService')
+    def test_generate_sql_no_objects_for_connection_empty_schema_to_gemini(self, MockGeminiService):
+        mock_gemini_instance = MockGeminiService.return_value
+        mock_gemini_instance.generate_sql_query.return_value = "SELECT 1;" # Gemini might do this
+
+        bq_config = BigQueryConfig(user_id=self.user.id, connection_name="gen_sql_no_objects_conn", gcp_key_json={})
+        db.session.add(bq_config)
+        db.session.commit()
+        # No objects created for this bq_config
+
+        payload = {
+            "user_request": "query with no context",
+            "connection_id": str(bq_config.id),
+            "object_names": []
+        }
+        response = self.client.post('/api/generate_sql_from_natural_language', headers=self.auth_headers, json=payload)
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+
+        mock_gemini_instance.generate_sql_query.assert_called_once()
+        call_args = mock_gemini_instance.generate_sql_query.call_args[0]
+        objects_data = call_args[1]
+        self.assertEqual(len(objects_data), 0) # Empty list passed to Gemini
+
+    @patch('backend.app.routes.api.GeminiService')
+    def test_generate_sql_object_name_not_found(self, MockGeminiService):
+        mock_gemini_instance = MockGeminiService.return_value
+        mock_gemini_instance.generate_sql_query.return_value = "SELECT 'not found';"
+
+        bq_config = BigQueryConfig(user_id=self.user.id, connection_name="gen_sql_not_found_conn", gcp_key_json={})
+        db.session.add(bq_config)
+        db.session.commit()
+
+        payload = {
+            "user_request": "query for non-existent table",
+            "connection_id": str(bq_config.id),
+            "object_names": ["nonexistent.table"]
+        }
+        response = self.client.post('/api/generate_sql_from_natural_language', headers=self.auth_headers, json=payload)
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+
+        mock_gemini_instance.generate_sql_query.assert_called_once()
+        call_args = mock_gemini_instance.generate_sql_query.call_args[0]
+        objects_data = call_args[1]
+
+        self.assertEqual(len(objects_data), 1)
+        self.assertEqual(objects_data[0]['object_name'], "nonexistent.table")
+        self.assertIsNone(objects_data[0]['object_description'])
+        self.assertEqual(len(objects_data[0]['fields']), 0)
+
 
 if __name__ == '__main__':
     unittest.main()
