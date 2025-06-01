@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine # Use a specific recent stable version
+    container_name: bigquery_tools_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres} # Default if not in .env, but init-db.sh uses its own logic
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres_db} # Initial DB, init-db.sh creates bigquery_tools
+    volumes:
+      - ./postgresql/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bigquery_tools_backend
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy # Waits for db healthcheck to pass
+    env_file:
+      - ./backend/.env # Load environment variables from .env file
+    volumes:
+      - ./backend:/app # Mounts your local backend code into the container for development
+                       # For production, you might remove this and rely on the COPY in Dockerfile
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"] # Assuming Flask runs on port 5000
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s # Give it time to start up, run migrations etc.
+
+  # frontend: # Placeholder for when you add frontend
+  #   build:
+  #     context: ./frontend # Assuming frontend code is in a 'frontend' directory
+  #     dockerfile: Dockerfile
+  #   container_name: bigquery_tools_frontend
+  #   ports:
+  #     - "3000:3000" # Or whatever port your frontend uses
+  #   depends_on:
+  #     - backend
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
