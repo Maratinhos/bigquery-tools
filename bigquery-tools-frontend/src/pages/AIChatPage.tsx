@@ -180,12 +180,17 @@ const AIChatPage: React.FC = () => {
                         <TextField
                         {...params}
                         variant="outlined"
-                        label="Relevant Table/View Names (Optional)"
-                        placeholder="e.g., dataset.table, another.view"
+                        label="Relevant Tables (Optional - uses all if empty)"
+                        placeholder="e.g., dataset.table (or leave blank to use all from connection)"
                         />
                     )}
                     disabled={!selectedConfigId}
                 />
+                <FormControl fullWidth sx={{mt: 0.5}}> {/* Adjusted sx prop */}
+                    <Typography variant="caption" color="textSecondary" sx={{ pl: 1.5, pr: 1.5, textAlign: 'left' }}>
+                        If left blank, the AI will use schema descriptions from all tables saved under the selected configuration.
+                    </Typography>
+                </FormControl>
             </Grid>
         </Grid>
       </Paper>

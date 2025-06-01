@@ -12,7 +12,7 @@ export interface TableSchemaResponse {
 
 export interface FieldDescriptionUpdate {
   field_name: string;
-  field_description: string;
+  field_description: string | null; // Changed string to string | null
 }
 
 interface UpdateSchemaResponse {
@@ -36,6 +36,33 @@ export const getTableSchema = async (connectionId: string, objectName: string): 
       throw error.response.data as ErrorResponse;
     }
     throw { message: error.message || 'Failed to fetch table schema.' } as ErrorResponse;
+  }
+};
+
+// Interfaces for getAllSavedSchemas
+export interface SavedField {
+  id: string;
+  field_name: string;
+  field_description: string | null;
+}
+
+export interface SavedObject {
+  id: string;
+  connection_id: string;
+  object_name: string;
+  object_description: string | null;
+  fields: SavedField[];
+}
+
+export const getAllSavedSchemas = async (): Promise<SavedObject[]> => {
+  try {
+    const response = await apiClient.get<SavedObject[]>('/objects_with_fields');
+    return response.data;
+  } catch (error: any) {
+    if (error.response && error.response.data) {
+      throw error.response.data as ErrorResponse;
+    }
+    throw { message: error.message || 'Failed to fetch saved schemas.' } as ErrorResponse;
   }
 };
 
