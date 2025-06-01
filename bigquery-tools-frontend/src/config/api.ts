@@ -1,8 +1,6 @@
 import axios from 'axios';
 
-// Define the base URL for the backend API
-// In a real app, this would likely come from an environment variable
-const API_BASE_URL = 'http://localhost:5000/api'; // Assuming backend runs on 5000 with /api prefix
+const API_BASE_URL = '/api'; // Changed from absolute to relative
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
