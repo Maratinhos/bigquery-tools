@@ -56,3 +56,39 @@ class BigQueryConfig(db.Model):
 
     def __repr__(self):
         return f'<BigQueryConfig {self.connection_name} for User {self.user_id}>'
+
+
+class Object(db.Model):
+    __tablename__ = 'objects'
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
+    connection_id = db.Column(UUID(as_uuid=True), db.ForeignKey('bigquery_configs.id'), nullable=False)
+    object_name = db.Column(db.String(255), nullable=False) # e.g., dataset_name.table_name or dataset_name.view_name
+    object_description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    fields = db.relationship('Field', backref='object', lazy=True, cascade="all, delete-orphan")
+    user = db.relationship('User', backref=db.backref('objects', lazy=True))
+    connection = db.relationship('BigQueryConfig', backref=db.backref('objects', lazy=True))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'connection_id', 'object_name', name='uq_user_connection_object_name'),
+    )
+
+    def __repr__(self):
+        return f'<Object {self.object_name} User {self.user_id} Connection {self.connection_id}>'
+
+
+class Field(db.Model):
+    __tablename__ = 'fields'
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    object_id = db.Column(UUID(as_uuid=True), db.ForeignKey('objects.id'), nullable=False)
+    field_name = db.Column(db.String(255), nullable=False)
+    field_description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # No explicit backref needed here for object, as it's already defined in Object model.
+
+    def __repr__(self):
+        return f'<Field {self.field_name} for Object {self.object_id}>'

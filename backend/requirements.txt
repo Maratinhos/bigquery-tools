@@ -10,3 +10,4 @@ google-cloud-bigquery>=3.10.0,<4.0.0
 google-auth>=2.20.0,<3.0.0 # Often a dependency of google-cloud libraries
 PyJWT>=2.7.0,<3.0.0 # Dependency for Flask-JWT-Extended
 # uuid is a built-in module
+google-generativeai>=0.5.0 # For Gemini API access
