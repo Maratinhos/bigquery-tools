@@ -13,7 +13,8 @@ import type { SelectChangeEvent } from '@mui/material';
 import { getConfigs } from '../services/bigQueryConfigService';
 import type { BigQueryConfigItem } from '../services/bigQueryConfigService';
 import { getTableSchema, updateSchemaDescription, getAllSavedSchemas } from '../services/schemaService';
-import type { FieldSchema, SavedObject, SavedField } from '../services/schemaService';
+import type { FieldSchema, SavedObject } from '../services/schemaService';
+
 
 interface DescribedField extends FieldSchema {
   description: string;
@@ -30,7 +31,6 @@ const SchemaDescriptionPage: React.FC = () => {
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [error, setError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null); // For non-field specific errors
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 

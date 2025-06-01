@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { BrowserRouter } from 'react-router-dom'; // Needed if there are NavLinks or similar
@@ -117,14 +116,6 @@ describe('SchemaDescriptionPage', () => {
   test('clicking saved schema populates form', async () => {
     renderPage();
     await waitFor(() => expect(mockGetAllSavedSchemas).toHaveBeenCalledTimes(1));
-
-    // Find the load button for 'dataset1.tableA' (more robust selectors might be needed)
-    const loadButtons = await screen.findAllByRole('button', { name: /load this schema/i });
-    // Assuming the first load button corresponds to the first mock saved schema or find specific one
-    const tableALoadButton = loadButtons.find(button =>
-        button.closest('li')?.querySelector('[data-testid="ListItemText"]')?.textContent?.includes('dataset1.tableA') || // This is a guess, MUI structure can be complex
-        button.closest('li')?.textContent?.includes('dataset1.tableA') // Fallback
-    );
 
     // A more direct way if we can add test ids or more specific aria-labels to list items or buttons
     // For now, let's assume we find a button for dataset1.tableA

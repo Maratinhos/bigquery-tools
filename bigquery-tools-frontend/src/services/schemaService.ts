@@ -12,7 +12,7 @@ export interface TableSchemaResponse {
 
 export interface FieldDescriptionUpdate {
   field_name: string;
-  field_description: string;
+  field_description: string | null; // Changed string to string | null
 }
 
 interface UpdateSchemaResponse {
