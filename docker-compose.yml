@@ -43,16 +43,22 @@ services:
       retries: 3
       start_period: 30s # Give it time to start up, run migrations etc.
 
-  # frontend: # Placeholder for when you add frontend
-  #   build:
-  #     context: ./frontend # Assuming frontend code is in a 'frontend' directory
-  #     dockerfile: Dockerfile
-  #   container_name: bigquery_tools_frontend
-  #   ports:
-  #     - "3000:3000" # Or whatever port your frontend uses
-  #   depends_on:
-  #     - backend
-  #   restart: unless-stopped
+  frontend:
+    build:
+      context: ./bigquery-tools-frontend # Path to frontend project
+      dockerfile: Dockerfile # Dockerfile within ./bigquery-tools-frontend
+    container_name: bigquery_tools_frontend
+    ports:
+      - "8080:80" # Expose Nginx port 80 to host port 8080
+    depends_on:
+      - backend # Frontend depends on backend for API calls
+    restart: unless-stopped
+    # Optional: Add healthcheck for Nginx if needed, though typically not as critical as backend
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost/"] # Nginx serves on port 80
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
 
 volumes:
   postgres_data:

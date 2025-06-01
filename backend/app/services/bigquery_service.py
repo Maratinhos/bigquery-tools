@@ -53,3 +53,32 @@ class BigQueryService:
             return False, {"message": f"BigQuery query execution failed: {e}"}
         except Exception as e:
             return False, {"message": f"An unexpected error occurred during query execution: {e}"}
+
+    def get_table_schema(self, table_id: str):
+        """
+        Retrieves the schema for a given BigQuery table.
+
+        Args:
+            table_id (str): The ID of the table in the format 'dataset_id.table_id'.
+                            Project ID is taken from the client's project.
+
+        Returns:
+            tuple: (success, data_or_error_message)
+                   If successful, data_or_error_message is a list of dicts,
+                   where each dict represents a field with 'name' and 'field_type'.
+                   If an error occurs, data_or_error_message is a dict with a 'message' key.
+        """
+        try:
+            table = self.client.get_table(table_id)  # API request
+            schema_info = []
+            for field in table.schema:
+                schema_info.append({"name": field.name, "field_type": field.field_type})
+
+            return True, schema_info
+        except GoogleAPICallError as e:
+            # More specific error messages can be helpful
+            if e.code == 404: # Not Found
+                 return False, {"message": f"Table or view '{table_id}' not found in project '{self.project_id}'. Error: {e}"}
+            return False, {"message": f"Failed to get schema for table '{table_id}'. BigQuery API error: {e}"}
+        except Exception as e:
+            return False, {"message": f"An unexpected error occurred while fetching schema for table '{table_id}': {e}"}
