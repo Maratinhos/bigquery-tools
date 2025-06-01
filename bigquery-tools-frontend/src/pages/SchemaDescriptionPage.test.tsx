@@ -215,7 +215,3 @@ describe('SchemaDescriptionPage', () => {
   });
 
 });
-
-`SchemaDescriptionPage.test.tsx` has been created with the tests.
-
-Next, I'll create `bigquery-tools-frontend/src/pages/AIChatPage.test.tsx` and implement the tests for the `AIChatPage` component.
