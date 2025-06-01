@@ -7,11 +7,13 @@ import {
 } from '@mui/material';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 
-import { addConfig, addConfigFile, testConfig } from '../services/bigQueryConfigService';
+import { addConfig, addConfigFile, testConfig, getConfigs } from '../services/bigQueryConfigService'; // Import getConfigs
 import type { BigQueryConfigItem } from '../services/bigQueryConfigService';
 
 const BigQueryConfigsPage: React.FC = () => {
   const [configs, setConfigs] = useState<BigQueryConfigItem[]>([]);
+  const [isFetchingConfigs, setIsFetchingConfigs] = useState(false); // New loading state
+  const [fetchConfigsError, setFetchConfigsError] = useState<string | null>(null); // New error state
   const [connectionName, setConnectionName] = useState('');
   const [gcpKeyJsonString, setGcpKeyJsonString] = useState('');
   const [gcpKeyFile, setGcpKeyFile] = useState<File | null>(null);
@@ -26,6 +28,24 @@ const BigQueryConfigsPage: React.FC = () => {
     const connNameField = document.getElementById('connectionName-input');
     connNameField?.focus();
   }, []);
+
+  // useEffect to fetch configs on component mount
+  useEffect(() => {
+    const fetchInitialConfigs = async () => {
+      setIsFetchingConfigs(true);
+      setFetchConfigsError(null);
+      try {
+        const fetchedConfigs = await getConfigs();
+        setConfigs(fetchedConfigs);
+      } catch (err: any) {
+        setFetchConfigsError(err.message || 'Failed to fetch configurations.');
+      } finally {
+        setIsFetchingConfigs(false);
+      }
+    };
+
+    fetchInitialConfigs();
+  }, []); // Empty dependency array to run only on mount
 
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -172,9 +192,12 @@ const BigQueryConfigsPage: React.FC = () => {
       </Paper>
 
       <Typography variant="h6" gutterBottom>Current Session Configurations</Typography>
-      {configs.length === 0 ? (
-        <Typography>No configurations added yet in this session.</Typography>
-      ) : (
+      {isFetchingConfigs && <Box sx={{display: 'flex', justifyContent: 'center', my: 3}}><CircularProgress /></Box>}
+      {fetchConfigsError && <Alert severity="error" onClose={() => setFetchConfigsError(null)} sx={{my:2}}>{fetchConfigsError}</Alert>}
+      {!isFetchingConfigs && !fetchConfigsError && configs.length === 0 && (
+        <Typography>No configurations found or added yet.</Typography>
+      )}
+      {!isFetchingConfigs && !fetchConfigsError && configs.length > 0 && (
         <TableContainer component={Paper}>
           <Table sx={{ minWidth: 650 }} aria-label="simple table">
             <TableHead>
@@ -193,7 +216,7 @@ const BigQueryConfigsPage: React.FC = () => {
                     <IconButton
                       onClick={() => handleTestConfig(config.id)}
                       color="primary"
-                      disabled={testStates[config.id]?.loading}
+                      disabled={testStates[config.id]?.loading || isFetchingConfigs} // Disable test if initial fetch is happening
                       aria-label={`Test configuration ${config.connection_name}`}
                     >
                       {testStates[config.id]?.loading ? <CircularProgress size={24} /> : <PlayCircleOutlineIcon />}

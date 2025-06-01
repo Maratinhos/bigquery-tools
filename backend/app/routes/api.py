@@ -41,6 +41,23 @@ def post_data():
                    user_id=current_user.id), 200
 
 
+@api_bp.route('/config', methods=['GET'])
+@token_required_custom
+def get_configs():
+    current_user = get_current_user_from_jwt()
+    configs = BigQueryConfig.query.filter_by(user_id=current_user.id).all()
+
+    configs_list = []
+    for config_item in configs:
+        configs_list.append({
+            "id": str(config_item.id),  # Ensure id is string
+            "connection_name": config_item.connection_name
+            # Add other fields if necessary, but problem asks for at least these two
+        })
+
+    return jsonify(configs_list), 200
+
+
 @api_bp.route('/config', methods=['POST'])
 @token_required_custom
 def upload_config():
