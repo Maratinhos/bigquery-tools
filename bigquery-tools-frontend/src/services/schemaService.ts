@@ -39,6 +39,33 @@ export const getTableSchema = async (connectionId: string, objectName: string): 
   }
 };
 
+// Interfaces for getAllSavedSchemas
+export interface SavedField {
+  id: string;
+  field_name: string;
+  field_description: string | null;
+}
+
+export interface SavedObject {
+  id: string;
+  connection_id: string;
+  object_name: string;
+  object_description: string | null;
+  fields: SavedField[];
+}
+
+export const getAllSavedSchemas = async (): Promise<SavedObject[]> => {
+  try {
+    const response = await apiClient.get<SavedObject[]>('/objects_with_fields');
+    return response.data;
+  } catch (error: any) {
+    if (error.response && error.response.data) {
+      throw error.response.data as ErrorResponse;
+    }
+    throw { message: error.message || 'Failed to fetch saved schemas.' } as ErrorResponse;
+  }
+};
+
 export const updateSchemaDescription = async (
   connectionId: string,
   objectName: string,
