@@ -28,8 +28,8 @@ const RegisterPage: React.FC = () => {
     try {
       const response = await register(email, password);
       // Assuming backend registration also returns a token directly
-      if (response.access_token) {
-        localStorage.setItem('authToken', response.access_token);
+      if (response.token) {
+        localStorage.setItem('authToken', response.token);
         // TODO: Redirect to a protected page or login page after registration
         navigate('/'); // Or navigate('/login') then user logs in
       } else {
