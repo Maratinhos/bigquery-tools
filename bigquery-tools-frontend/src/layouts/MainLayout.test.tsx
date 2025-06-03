@@ -1,9 +1,9 @@
 import React from 'react';
-import { render, screen, fireEvent, RenderOptions, act } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import type { RenderOptions } from '@testing-library/react'; // Import type
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import theme from '../theme'; // Adjusted import
-import MainLayout from './MainLayout';
 
 // Mock the authService logout function
 jest.mock('../services/authService', () => ({
