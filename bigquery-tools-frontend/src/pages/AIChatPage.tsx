@@ -42,8 +42,8 @@ const AIChatPage: React.FC = () => {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const userInputRef = useRef<HTMLInputElement>(null);
 
-  // const [showRequestPanel, setShowRequestPanel] = useState<boolean>(false); // Added in previous step - this line is commented out as it was already added
-  // const [requestPanelContent, setRequestPanelContent] = useState<string>(''); // Added in previous step - this line is commented out as it was already added
+  const [showRequestPanel, setShowRequestPanel] = useState<boolean>(false);
+  const [requestPanelContent, setRequestPanelContent] = useState<string>('');
 
   useEffect(() => {
     const fetchConfigs = async () => {
