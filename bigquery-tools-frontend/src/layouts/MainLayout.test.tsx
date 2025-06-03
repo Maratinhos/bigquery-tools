@@ -4,7 +4,6 @@ import type { RenderOptions } from '@testing-library/react'; // Import type
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import theme from '../theme'; // Adjusted import
-// Removed static import: import MainLayout from './MainLayout';
 
 // Mock the authService logout function
 jest.mock('../services/authService', () => ({
