@@ -72,8 +72,10 @@ const AIChatPage: React.FC = () => {
     }
   }, [chatMessages]);
 
-  const addMessage = (type: ChatMessage['type'], content: string, extras: Partial<ChatMessage> = {}) => {
-    setChatMessages(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, type, content, ...extras }]);
+  const addMessage = (type: ChatMessage['type'], content: string, extras: Partial<ChatMessage> = {}, specificId?: string) => {
+    const messageId = specificId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setChatMessages(prev => [...prev, { id: messageId, type, content, ...extras }]);
+    return messageId; // Return the ID
   };
 
   const handleSubmitRequest = async () => {
@@ -83,12 +85,14 @@ const AIChatPage: React.FC = () => {
     }
 
     const currentRequest = userRequest;
-    addMessage('user', currentRequest, { fullRequestText: currentRequest });
+    // Generate user message ID beforehand to update it later
+    const userMessageId = addMessage('user', currentRequest, { fullRequestText: currentRequest }); // Store user's initial request
+
     setUserRequest('');
     setIsGeneratingSql(true);
     setError(null);
 
-    const tempAiMessageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-ai`;
+    // const tempAiMessageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-ai`; // Not needed anymore
 
     try {
       const genSqlResponse: GenerateSqlResponse = await generateSqlFromNaturalLanguage(
@@ -97,41 +101,57 @@ const AIChatPage: React.FC = () => {
         selectedObjectNames
       );
 
-      if (genSqlResponse.generated_sql) {
-        const sql = genSqlResponse.generated_sql;
-        setChatMessages(prev => [...prev, {
-            id: tempAiMessageId,
-            type: 'ai',
-            content: `Generated SQL:`,
-            sql: sql,
-            isDryRunLoading: true
-        }]);
-        setIsGeneratingSql(false);
+      // Update the original user message with the full prompt from backend
+      if (genSqlResponse.full_prompt_string && userMessageId) {
+        setChatMessages(prev => prev.map(msg =>
+          msg.id === userMessageId
+            ? { ...msg, fullRequestText: genSqlResponse.full_prompt_string }
+            : msg
+        ));
+      }
 
+      if (genSqlResponse.generated_sql) { // If SQL was generated
+        const sql = genSqlResponse.generated_sql; // Safe to access, already checked
+        // Add AI message with SQL
+        const aiMessageId = addMessage('ai', `Generated SQL:`, { sql: sql, isDryRunLoading: true });
+        setIsGeneratingSql(false); // Stop generating SQL loading state
+
+        // Perform dry run
         try {
           const dryRunRes: DryRunResponse = await dryRunQuery(selectedConfigId, sql);
-          let dryRunInfo = `Dry run: ${dryRunRes.message}`;
-          if (dryRunRes.gb_processed !== undefined && dryRunRes.gb_processed !== null) {
-            dryRunInfo += ` Processed: ${dryRunRes.gb_processed.toFixed(4)} GB.`;
-          }
+          // dryRunRes.message already contains the full sentence with GB processed.
+          // Example: "Query dry run successful. Estimated data to be processed: 0.1234 GB."
+          const newAiMessageContent = `Generated SQL:\n\n${dryRunRes.message}`; // Use dryRunRes.message directly.
+
           setChatMessages(prev => prev.map(msg =>
-            msg.id === tempAiMessageId
-            ? { ...msg, content: `Generated SQL:\n\n${dryRunInfo}`, sql: sql, gbProcessed: dryRunRes.gb_processed, isDryRunLoading: false }
+            msg.id === aiMessageId // Update the AI message with dry run info
+            ? { ...msg, content: newAiMessageContent, sql: sql, gbProcessed: dryRunRes.gb_processed, isDryRunLoading: false }
             : msg
           ));
-
         } catch (dryRunErr: any) {
           setChatMessages(prev => prev.map(msg =>
-            msg.id === tempAiMessageId
+            msg.id === aiMessageId // Update the AI message with dry run failure
             ? { ...msg, content: `Generated SQL:\n\nDry run failed: ${dryRunErr.message}`, sql: sql, gbProcessed: null, isDryRunLoading: false }
             : msg
           ));
         }
-      } else {
-        addMessage('error', "The AI did not return a SQL query. Please try rephrasing your request.");
+      } else { // If AI did not return SQL (e.g. error, or just prompt)
+        const errorMessage = genSqlResponse.full_prompt_string // If backend sent back prompt with an error message, it might be in message prop
+          ? "The AI did not return a SQL query. Review the full prompt for details." // Placeholder, backend should provide error message
+          : "The AI did not return a SQL query. Please try rephrasing your request.";
+        addMessage('error', errorMessage);
         setIsGeneratingSql(false);
       }
-    } catch (genErr: any) {
+    } catch (genErr: any) { // Catch errors from generateSqlFromNaturalLanguage call itself
+      // If genErr contains full_prompt_string, it means backend route sent it during an error
+      const promptFromError = (genErr as any).full_prompt_string;
+      if (promptFromError && userMessageId) {
+        setChatMessages(prev => prev.map(msg =>
+          msg.id === userMessageId
+            ? { ...msg, fullRequestText: promptFromError }
+            : msg
+        ));
+      }
       addMessage('error', `Failed to generate SQL: ${genErr.message}`);
       setIsGeneratingSql(false);
     }
@@ -247,7 +267,7 @@ const AIChatPage: React.FC = () => {
                 }}
               >
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {msg.sql && msg.content.startsWith("Generated SQL:") ? msg.content.substring(0, msg.content.indexOf(msg.sql)).trim() : msg.content}
+                  {msg.content}
                 </Typography>
                 {msg.sql && <CodeBlock sql={msg.sql} />}
                 {msg.isDryRunLoading && (

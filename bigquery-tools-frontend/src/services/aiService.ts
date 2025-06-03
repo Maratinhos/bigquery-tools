@@ -6,6 +6,7 @@ interface ErrorResponse {
 
 export interface GenerateSqlResponse {
   generated_sql: string;
+  full_prompt_string?: string; // New field
   // Potentially other fields from backend if any
 }
 
