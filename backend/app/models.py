@@ -47,7 +47,7 @@ class BigQueryConfig(db.Model):
     __tablename__ = 'bigquery_configs'
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
-    gcp_key_json = db.Column(JSONB, nullable=False) # Use JSONB for PostgreSQL
+    gcp_key_json = db.Column(db.JSON, nullable=False) # Use JSON for broader compatibility (inc. SQLite)
     connection_name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -70,7 +70,7 @@ class Object(db.Model):
     # Relationships
     fields = db.relationship('Field', backref='object', lazy=True, cascade="all, delete-orphan")
     user = db.relationship('User', backref=db.backref('objects', lazy=True))
-    connection = db.relationship('BigQueryConfig', backref=db.backref('objects', lazy=True))
+    connection = db.relationship('BigQueryConfig', backref=db.backref('objects', lazy=True, cascade="all, delete-orphan"))
 
     __table_args__ = (
         db.UniqueConstraint('user_id', 'connection_id', 'object_name', name='uq_user_connection_object_name'),

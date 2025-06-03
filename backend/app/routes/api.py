@@ -1,4 +1,5 @@
 import json
+import uuid # Added for UUID conversion
 from flask import request, jsonify, current_app
 from flask_jwt_extended import get_jwt_identity
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,7 +13,15 @@ from ..services.gemini_service import GeminiService # Import GeminiService
 # Helper to get current user from JWT (after token_required_custom has run)
 def get_current_user_from_jwt():
     user_id_str = get_jwt_identity()
-    return User.query.get(user_id_str)
+    if not user_id_str:
+        return None # Or raise an error, depending on expected behavior
+    try:
+        user_id_uuid = uuid.UUID(user_id_str)
+    except ValueError:
+        # Log error: user_id_str from JWT is not a valid UUID
+        current_app.logger.warning(f"Invalid UUID format for user_id from JWT: {user_id_str}")
+        return None # Or raise an error
+    return db.session.get(User, user_id_uuid)
 
 
 @api_bp.route('/data', methods=['GET'])
@@ -461,6 +470,37 @@ def dry_run_query():
     except ValueError as e: # From BigQueryService init
         return jsonify(message=str(e)), 400
     except Exception as e:
+        return jsonify(message=f"An unexpected error occurred: {str(e)}"), 500
+
+
+@api_bp.route('/config/<uuid:config_id>', methods=['DELETE'])
+@token_required_custom
+def delete_config(config_id):
+    current_user = get_current_user_from_jwt()
+
+    # config_id is already a UUID object from the path converter
+    # current_user.id is also a UUID object
+    config_to_delete = BigQueryConfig.query.filter_by(id=config_id, user_id=current_user.id).first()
+
+    if not config_to_delete:
+        return jsonify(message="Configuration not found or access denied."), 404
+
+    try:
+        # Associated objects and fields should be handled by cascade delete if set up in models.
+        # If not, they would need to be manually deleted here or handled by a DB trigger.
+        # For now, assuming cascade is in place or will be handled separately if errors arise.
+        db.session.delete(config_to_delete)
+        db.session.commit()
+        # 204 No Content is often used for successful DELETE requests with no body
+        # However, the task asks for a success message, so 200 is also fine. Let's use 200.
+        return jsonify(message="Configuration deleted successfully."), 200
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"Database error deleting configuration {config_id}: {str(e)}")
+        return jsonify(message=f"Failed to delete configuration due to a database error: {str(e)}"), 500
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Unexpected error deleting configuration {config_id}: {str(e)}")
         return jsonify(message=f"An unexpected error occurred: {str(e)}"), 500
 
 

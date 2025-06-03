@@ -81,3 +81,15 @@ export const testConfig = async (configId: string): Promise<TestConfigResponse> 
     throw { message: error.message || 'Failed to test configuration.' } as ErrorResponse;
   }
 };
+
+export const deleteConfig = async (configId: string): Promise<{ message: string }> => {
+  try {
+    const response = await apiClient.delete<{ message: string }>(`/config/${configId}`);
+    return response.data;
+  } catch (error: any) {
+    if (error.response && error.response.data) {
+      throw error.response.data as ErrorResponse;
+    }
+    throw { message: error.message || 'Failed to delete configuration.' } as ErrorResponse;
+  }
+};

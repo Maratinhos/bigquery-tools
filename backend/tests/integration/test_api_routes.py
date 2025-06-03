@@ -4,9 +4,13 @@ import uuid
 from unittest.mock import patch, MagicMock
 
 # Assuming your Flask app is created by a function `create_app` in `backend.app`
+import datetime # Added for session expiry
+from flask_jwt_extended import create_access_token # Added for token creation
+
+# Assuming your Flask app is created by a function `create_app` in `backend.app`
 # and `db` is your SQLAlchemy instance from `backend.app`
 from backend.app import create_app, db
-from backend.app.models import User, BigQueryConfig, Object, Field
+from backend.app.models import User, BigQueryConfig, Object, Field, Session # Added Session
 
 # Use a specific configuration for testing
 class TestConfig:
@@ -14,6 +18,7 @@ class TestConfig:
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:' # Use in-memory SQLite for integration tests
     SECRET_KEY = 'test-secret-key'
     JWT_SECRET_KEY = 'test-jwt-secret-key'
+    JWT_ACCESS_TOKEN_EXPIRES = datetime.timedelta(hours=1) # Added for session creation
     # Suppress CSRF protection in tests if you use Flask-WTF, etc.
     # WTF_CSRF_ENABLED = False
     GEMINI_API_KEY = "fake_gemini_key_for_testing_config_load" # So app doesn't fail if config expects it
@@ -35,18 +40,34 @@ class BaseIntegrationTestCase(unittest.TestCase):
 
         # Simulate token generation (actual token generation might involve another endpoint or utility)
         # For simplicity, we'll assume a valid token can be "mocked" or a test utility generates it.
-        # Here, we'll mock get_jwt_identity to simplify.
-        # A more robust way is to call your /login endpoint to get a real token.
-        self.mock_jwt_patch = patch('flask_jwt_extended.get_jwt_identity', return_value=str(self.user.id))
-        self.mock_jwt = self.mock_jwt_patch.start()
-        self.auth_headers = {"Authorization": "Bearer dummy_token_doesnt_matter_due_to_mock"}
+
+        # Create a real token and session for the user
+        self.access_token = create_access_token(identity=str(self.user.id))
+
+        expires_delta = self.app.config.get('JWT_ACCESS_TOKEN_EXPIRES', datetime.timedelta(hours=1))
+        # Ensure current_app is available if Session model relies on it for default expiry
+        with self.app.app_context():
+            session_entry = Session(
+                user_id=self.user.id,
+                token=self.access_token,
+                expires_at=datetime.datetime.utcnow() + expires_delta
+            )
+            db.session.add(session_entry)
+            db.session.commit()
+
+        self.auth_headers = {"Authorization": f"Bearer {self.access_token}"}
+
+        # No longer mocking get_jwt_identity directly as we use a real token.
+        # self.mock_jwt_patch = patch('flask_jwt_extended.get_jwt_identity', return_value=str(self.user.id))
+        # self.mock_jwt = self.mock_jwt_patch.start()
 
 
     def tearDown(self):
         db.session.remove()
         db.drop_all()
         self.app_context.pop()
-        self.mock_jwt_patch.stop()
+        # if hasattr(self, 'mock_jwt_patch'): # Stop patch if it was started
+        #    self.mock_jwt_patch.stop()
 
 
 class TestApiRoutes(BaseIntegrationTestCase):
@@ -462,6 +483,131 @@ class TestApiRoutes(BaseIntegrationTestCase):
         self.assertEqual(objects_data[0]['object_name'], "nonexistent.table")
         self.assertIsNone(objects_data[0]['object_description'])
         self.assertEqual(len(objects_data[0]['fields']), 0)
+
+
+class TestConfigDelete(BaseIntegrationTestCase):
+
+    def test_delete_bigquery_config_success(self):
+        # 1. Setup: Create a BigQueryConfig for the user
+        bq_config = BigQueryConfig(
+            user_id=self.user.id,
+            connection_name="test_delete_conn",
+            gcp_key_json={"project_id": "delete_test"}
+        )
+        db.session.add(bq_config)
+        db.session.commit()
+        config_id = str(bq_config.id)
+
+        # Optional: Create related Object and Field to test cascade
+        obj = Object(user_id=self.user.id, connection_id=bq_config.id, object_name="dataset.table_to_delete")
+        db.session.add(obj)
+        db.session.commit()
+        obj_id = str(obj.id)
+        field = Field(object_id=obj.id, field_name="field_to_delete")
+        db.session.add(field)
+        db.session.commit()
+        field_id = str(field.id)
+
+        # 2. Send DELETE request
+        response = self.client.delete(f'/api/config/{config_id}', headers=self.auth_headers)
+
+        # 3. Assert response
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["message"], "Configuration deleted successfully.")
+
+        # 4. Assert config is removed from DB
+        deleted_config = db.session.get(BigQueryConfig, bq_config.id) # Use UUID object
+        self.assertIsNone(deleted_config)
+
+        # 5. Assert related Object and Field are removed (optional cascade check)
+        # Note: This depends on cascade settings in models.py or DB schema.
+        # BigQueryConfig.objects relationship does not currently have cascade="all, delete-orphan"
+        # So, direct children Objects might not be deleted by SQLAlchemy unless DB enforces ON DELETE CASCADE.
+        # However, if the DB (like Postgres with FKs) enforces it, they would be.
+        # For SQLite in tests, PRAGMA foreign_keys=ON would be needed for DB-level cascade.
+        # Let's check and report.
+        deleted_object = db.session.get(Object, obj.id) # Use UUID object
+        deleted_field = db.session.get(Field, field.id) # Use UUID object
+
+        # If cascade from BigQueryConfig to Object is not working, deleted_object will exist.
+        # If it exists, then deleted_field should also exist (as Field cascades from Object).
+        # If cascade from BigQueryConfig to Object IS working, deleted_object will be None.
+        # And consequently, deleted_field should also be None (as Object deletion cascades to Field).
+
+        # We expect the Object and Field to be deleted if the foreign key constraint from Object to BigQueryConfig
+        # is set with ON DELETE CASCADE at the DB level, or if SQLAlchemy was configured to do it.
+        # Given models.py, BigQueryConfig.objects does not have this.
+        # Let's assume for now that the DB or models *should* eventually support this.
+        # The route itself doesn't manually delete them.
+        # If this fails, it's an issue with model definition or DB setup for cascading, not the route logic itself.
+
+        # Check if PRAGMA foreign_keys=ON is active for SQLite:
+        # cur = db.session.execute("PRAGMA foreign_keys;")
+        # fk_on = cur.fetchone()[0]
+        # print(f"SQLite foreign_keys PRAGMA: {fk_on}") # Would require running this in test setup
+
+        # For now, let's assert they are deleted, and if tests fail, it highlights the cascade issue.
+        self.assertIsNone(deleted_object, "Related Object should be deleted by cascade.")
+        self.assertIsNone(deleted_field, "Related Field should be deleted due to Object being deleted by cascade.")
+
+
+    def test_delete_bigquery_config_unauthorized_wrong_user(self):
+        # 1. Setup: Create config for the main user
+        bq_config_user1 = BigQueryConfig(user_id=self.user.id, connection_name="user1_conn", gcp_key_json={})
+        db.session.add(bq_config_user1)
+        db.session.commit()
+        # config_id_user1 = str(bq_config_user1.id) # Not used for deletion attempt
+
+        # 2. Create a second user and a config for them
+        user2 = User(email=f"testuser2_{uuid.uuid4()}@example.com")
+        user2.set_password("password2")
+        db.session.add(user2)
+        db.session.commit()
+        bq_config_user2 = BigQueryConfig(user_id=user2.id, connection_name="user2_conn", gcp_key_json={})
+        db.session.add(bq_config_user2)
+        db.session.commit()
+        config_id_user2 = str(bq_config_user2.id)
+
+        # 3. Current logged-in user (self.user) tries to delete user2's config
+        response = self.client.delete(f'/api/config/{config_id_user2}', headers=self.auth_headers)
+
+        # 4. Assert 404 (or 403)
+        self.assertEqual(response.status_code, 404) # Route returns 404 if config_id and user_id don't match
+        self.assertEqual(response.get_json()["message"], "Configuration not found or access denied.")
+
+        # 5. Assert config for user2 still exists
+        still_exists_config = db.session.get(BigQueryConfig, bq_config_user2.id) # Use UUID object
+        self.assertIsNotNone(still_exists_config)
+
+
+    def test_delete_non_existent_config(self):
+        non_existent_uuid = str(uuid.uuid4())
+        response = self.client.delete(f'/api/config/{non_existent_uuid}', headers=self.auth_headers)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()["message"], "Configuration not found or access denied.")
+
+    def test_delete_config_without_token(self):
+        # 1. Setup: Create a config
+        bq_config = BigQueryConfig(user_id=self.user.id, connection_name="no_token_conn", gcp_key_json={})
+        db.session.add(bq_config)
+        db.session.commit()
+        config_id = str(bq_config.id)
+
+        # 2. Send DELETE request without auth headers
+        response = self.client.delete(f'/api/config/{config_id}') # No headers=self.auth_headers
+
+        # 3. Assert 401
+        # This depends on how @token_required_custom is implemented and how flask_jwt_extended handles missing tokens
+        # Typically, it should be 401.
+        self.assertEqual(response.status_code, 401)
+        # The actual message might vary depending on flask_jwt_extended default error handlers
+        # Example: {"msg": "Missing Authorization Header"} or similar
+        # For now, just checking status code is fine.
+        # self.assertIn("Missing Authorization Header", response.get_json().get("msg", ""))
+
+        # 4. Assert config still exists
+        still_exists_config = db.session.get(BigQueryConfig, bq_config.id) # Use UUID object
+        self.assertIsNotNone(still_exists_config)
 
 
 if __name__ == '__main__':
