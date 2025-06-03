@@ -428,15 +428,19 @@ def generate_sql_from_natural_language():
         return jsonify(message=f"AI service connection error: {ce}"), 500
 
     try:
-        generated_sql = gemini_service.generate_sql_query(user_request_text, objects_with_fields_data)
-        if generated_sql:
-            return jsonify(generated_sql=generated_sql), 200
+        result = gemini_service.generate_sql_query(user_request_text, objects_with_fields_data)
+
+        if result and result.get('sql'):
+            return jsonify(generated_sql=result['sql'], full_prompt_string=result['full_prompt']), 200
+        elif result and result.get('full_prompt'):
+            # SQL generation failed, but we have the prompt
+            current_app.logger.warning(f"GeminiService returned None for SQL, but prompt was generated for user request: {user_request_text}")
+            return jsonify(message="Could not generate SQL query. The AI service might have failed or found the request unclear.", full_prompt_string=result['full_prompt']), 422
         else:
-            # This 'else' can be due to various reasons:
-            # - Gemini couldn't generate SQL (e.g., request too vague, content policy, etc.)
-            # - An error occurred within generate_sql_query that was handled by returning None
-            current_app.logger.warning(f"GeminiService returned None for user request: {user_request_text}")
-            return jsonify(message="Could not generate SQL query. The AI service might have failed or found the request unclear."), 422 # 422 Unprocessable Entity
+            # This 'else' means result is None (e.g. invalid input to service) or prompt itself is missing
+            current_app.logger.warning(f"GeminiService returned None or invalid result for user request: {user_request_text}")
+            return jsonify(message="Could not generate SQL query due to an internal error or invalid input before AI processing."), 422
+
     except Exception as e:
         # This would catch errors not handled within GeminiService.generate_sql_query
         current_app.logger.error(f"Error during Gemini SQL generation: {str(e)}")

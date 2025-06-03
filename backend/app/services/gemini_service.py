@@ -36,7 +36,9 @@ class GeminiService:
                 }
 
         Returns:
-            str: The generated SQL query, or None if an error occurred.
+            dict: A dictionary with 'sql' (str, the generated query or None) and
+                  'full_prompt' (str, the prompt sent to Gemini), or None if
+                  critical input like user_request or objects_with_fields is missing.
         """
         if not user_request:
             return None # Or raise ValueError("User request cannot be empty.")
@@ -112,7 +114,7 @@ class GeminiService:
                     generated_sql = generated_sql[:-3]
 
                 logger.info(f"Successfully generated SQL query: {generated_sql}")
-                return generated_sql.strip()
+                return {'sql': generated_sql.strip(), 'full_prompt': final_prompt}
             else:
                 # Handle cases where response might be blocked or has no candidates
                 # This can happen if safety settings block the response despite BLOCK_NONE (unlikely for SQL)
@@ -124,10 +126,10 @@ class GeminiService:
                 if response.candidates and not response.candidates[0].content.parts:
                      logger.warning(f"Candidate exists but content parts are empty. Candidate finish reason: {response.candidates[0].finish_reason}")
 
-                return None
+                return {'sql': None, 'full_prompt': final_prompt}
 
         except Exception as e:
             logger.error(f"Error generating SQL query with Gemini: {e}")
             # Depending on how you want to signal this error to the caller:
             # raise  # Re-raise the exception to be caught by the endpoint
-            return None # Or return None and let the endpoint handle it as a failure
+            return {'sql': None, 'full_prompt': final_prompt}
