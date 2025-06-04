@@ -486,8 +486,8 @@ def generate_sql_from_natural_language():
     #     return jsonify(message="AI service is not configured."), 500
 
     try:
-        # gemini_service = GeminiService(api_key=gemini_api_key) # Proper way
-        gemini_service = GeminiService(api_key=temp_gemini_api_key) # Using temporary key
+        # gemini_service = GeminiService() # Proper way
+        gemini_service = GeminiService() # Using temporary key
     except ValueError as ve: # If API key is missing in GeminiService init
         current_app.logger.error(f"GeminiService initialization error: {ve}")
         return jsonify(message=f"AI service initialization error: {ve}"), 500
