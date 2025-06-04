@@ -26,6 +26,7 @@ import StorageIcon from '@mui/icons-material/Storage'; // For BQ Configs
 import DescriptionIcon from '@mui/icons-material/Description'; // For Schema Desc
 import ChatIcon from '@mui/icons-material/Chat'; // For AI Chat
 // import SmartToyIcon from '@mui/icons-material/SmartToy'; // Alternative for AI Chat
+import KeyIcon from '@mui/icons-material/VpnKey'; // For Gemini API Key
 
 const drawerWidth = 240;
 
@@ -81,6 +82,14 @@ const MainLayout: React.FC = () => {
               <ChatIcon />
             </ListItemIcon>
             <ListItemText primary="AI Chat" />
+          </ListItem>
+        </Tooltip>
+        <Tooltip title="Gemini API Key">
+          <ListItem button component={RouterLink} to="/gemini-api-key" onClick={handleDrawerToggle}>
+            <ListItemIcon>
+              <KeyIcon />
+            </ListItemIcon>
+            <ListItemText primary="Gemini Key" />
           </ListItem>
         </Tooltip>
       </List>

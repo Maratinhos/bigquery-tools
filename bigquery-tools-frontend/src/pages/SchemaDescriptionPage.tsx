@@ -86,7 +86,7 @@ const SchemaDescriptionPage: React.FC = () => {
         }, 0);
         return () => clearTimeout(timer);
     }
-  }, [selectedConfigId, isLoadingConfigs, isLoadingSchema, isSaving, fields]);
+  }, [selectedConfigId, isLoadingConfigs, isLoadingSchema, isSaving]);
 
 
   const handleGetSchema = async () => {
@@ -179,6 +179,7 @@ const SchemaDescriptionPage: React.FC = () => {
     })));
     setGeneralError(null); // Clear any previous errors
     setSuccessMessage(`Loaded saved schema for '${savedObject.object_name}'. You can edit and save again.`);
+    objectNameInputRef.current?.focus();
 
     // Scroll to top of form for better UX
     if(topOfFormRef.current) {
@@ -222,7 +223,7 @@ const SchemaDescriptionPage: React.FC = () => {
       {/* Main layout grid */}
       <Grid container spacing={3}>
         {/* Left Panel: Schema Editing Form */}
-        <Grid item xs={12} md={7}>
+        <Grid item xs={12} md={8}>
           <Paper sx={{ p: { xs: 2, md: 3 }, mb: 3 }}>
             <Typography variant="h6" gutterBottom>Select Configuration and Object</Typography>
             <Grid container spacing={2} alignItems="center">
@@ -337,7 +338,7 @@ const SchemaDescriptionPage: React.FC = () => {
         </Grid> {/* End Left Panel */}
 
         {/* Right Panel: Saved Schemas */}
-        <Grid item xs={12} md={5}>
+        <Grid item xs={12} md={4}>
           <Paper sx={{ p: { xs: 2, md: 3 }, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
             <Typography variant="h6" gutterBottom>
               Browse Saved Object Descriptions
