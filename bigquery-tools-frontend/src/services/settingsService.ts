@@ -1,7 +1,7 @@
-import { getApiUrl } from '../config/api'; // Assuming you have this helper
+import { API_BASE_URL } from '../config/api';
 import { getToken } from './authService'; // For authorization header
 
-const API_URL = getApiUrl();
+const API_URL = API_BASE_URL;
 
 export interface GeminiApiKeyResponse {
   api_key?: string;
