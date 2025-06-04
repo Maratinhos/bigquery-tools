@@ -15,5 +15,3 @@ class Config:
 
     INITIAL_ADMIN_EMAIL = os.environ.get('INITIAL_ADMIN_EMAIL')
     INITIAL_ADMIN_PASSWORD = os.environ.get('INITIAL_ADMIN_PASSWORD')
-
-    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
