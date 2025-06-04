@@ -1,21 +1,40 @@
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import logging
+from flask import current_app # For logger and app context for DB
+
+# Assuming models.py and __init__.py (for db) are structured correctly relative to services
+from ..models import GeminiAPIKey
+# db object would typically be accessed via current_app.extensions['sqlalchemy'].db
+# or similar, but models themselves can be queried if app context is active.
+# For direct db session usage outside of request, app context management is needed.
+# Here, we assume instantiation within an app context.
 
 logger = logging.getLogger(__name__)
 
 class GeminiService:
-    def __init__(self, api_key):
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is required to initialize GeminiService.")
+    def __init__(self):
+        # Fetch API key from database
+        # This requires an active Flask app context for database operations.
+        # If service is created outside app context, this will fail.
+        # Consider passing app or db session if that's a use case.
+        db_api_key_entry = GeminiAPIKey.query.first()
+
+        if not db_api_key_entry or not db_api_key_entry.api_key:
+            logger.error("Gemini API Key not found in the database.")
+            raise ValueError("Gemini API Key not configured in the database. Please set it via the API.")
+
+        retrieved_api_key = db_api_key_entry.api_key
+
         try:
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=retrieved_api_key)
             # TODO: Consider making model name configurable
             self.model = genai.GenerativeModel('gemini-1.5-flash-latest') # Using gemini-1.5-flash for speed and cost
-            logger.info("GeminiService initialized successfully.")
+            logger.info("GeminiService initialized successfully using key from database.")
         except Exception as e:
-            logger.error(f"Error initializing Gemini API: {e}")
-            raise ConnectionError(f"Failed to configure Gemini API: {e}")
+            logger.error(f"Error initializing Gemini API with key from database: {e}")
+            # Keep original ConnectionError for consistency if genai.configure fails
+            raise ConnectionError(f"Failed to configure Gemini API with key from database: {e}")
 
     def generate_sql_query(self, user_request: str, objects_with_fields: list):
         """

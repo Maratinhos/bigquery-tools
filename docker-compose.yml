@@ -5,16 +5,16 @@ services:
     image: postgres:15-alpine # Use a specific recent stable version
     container_name: bigquery_tools_db
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres} # Default if not in .env, but init-db.sh uses its own logic
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-postgres_db} # Initial DB, init-db.sh creates bigquery_tools
+      POSTGRES_USER: bigquery_tools_user
+      POSTGRES_PASSWORD: orange100.new-pack.club
+      POSTGRES_DB: bigquery_tools_db
     volumes:
       - ./postgresql/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres_db}"]
+      test: ["CMD-SHELL", "pg_isready -U bigquery_tools_user -d bigquery_tools_db"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -1,11 +1,11 @@
 import json
 import uuid # Added for UUID conversion
 from flask import request, jsonify, current_app
-from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy.exc import SQLAlchemyError
 from . import api_bp
 from .. import db
-from ..models import User, BigQueryConfig, Session, Object, Field
+from ..models import User, BigQueryConfig, Session, Object, Field, GeminiAPIKey
 from ..utils import token_required_custom
 from ..services.bigquery_service import BigQueryService
 from ..services.gemini_service import GeminiService # Import GeminiService
@@ -148,6 +148,74 @@ def test_config():
     except ValueError as e: # From BigQueryService init
         return jsonify(message=str(e)), 400
     except Exception as e:
+        return jsonify(message=f"An unexpected error occurred: {str(e)}"), 500
+
+
+@api_bp.route('/settings/gemini-api-key', methods=['POST'])
+@jwt_required()
+def set_gemini_api_key():
+    # The task implies this might be an admin-only action in the future.
+    # For now, any authenticated user can set it as per problem description.
+    # If admin check is needed, it would be:
+    # current_user_obj = get_current_user_from_jwt()
+    # if not current_user_obj or not current_user_obj.is_admin: # Assuming an is_admin flag
+    #     return jsonify(message="Admin access required."), 403
+
+    data = request.get_json()
+    if not data or not data.get('api_key'):
+        return jsonify(message="api_key is required in JSON payload."), 400
+
+    api_key_value = data.get('api_key')
+    if not isinstance(api_key_value, str) or len(api_key_value.strip()) == 0:
+        return jsonify(message="api_key must be a non-empty string."), 400
+
+    # The GeminiAPIKey model does not associate keys with users,
+    # implying a single, system-wide key.
+    try:
+        gemini_api_key_entry = GeminiAPIKey.query.first()
+
+        if gemini_api_key_entry:
+            gemini_api_key_entry.api_key = api_key_value
+            current_app.logger.info("Updated existing Gemini API Key.")
+        else:
+            gemini_api_key_entry = GeminiAPIKey(api_key=api_key_value)
+            db.session.add(gemini_api_key_entry)
+            current_app.logger.info("Created new Gemini API Key entry.")
+
+        db.session.commit()
+        return jsonify(message="Gemini API Key saved successfully."), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"Database error saving Gemini API Key: {str(e)}")
+        return jsonify(message=f"Failed to save Gemini API Key due to a database error: {str(e)}"), 500
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Unexpected error saving Gemini API Key: {str(e)}")
+        return jsonify(message=f"An unexpected error occurred: {str(e)}"), 500
+
+
+@api_bp.route('/settings/gemini-api-key', methods=['GET'])
+@jwt_required()
+def get_gemini_api_key():
+    # Future: Add admin check if roles are implemented
+    # current_user_obj = get_current_user_from_jwt()
+    # if not current_user_obj or not current_user_obj.is_admin:
+    #     return jsonify(message="Admin access required."), 403
+
+    try:
+        gemini_api_key_entry = GeminiAPIKey.query.first()
+
+        if gemini_api_key_entry:
+            return jsonify(api_key=gemini_api_key_entry.api_key), 200
+        else:
+            return jsonify(message="Gemini API Key not set."), 404
+
+    except SQLAlchemyError as e:
+        current_app.logger.error(f"Database error retrieving Gemini API Key: {str(e)}")
+        return jsonify(message=f"Failed to retrieve Gemini API Key due to a database error: {str(e)}"), 500
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error retrieving Gemini API Key: {str(e)}")
         return jsonify(message=f"An unexpected error occurred: {str(e)}"), 500
 
 
