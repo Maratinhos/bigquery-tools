@@ -6,7 +6,7 @@ export PGUSER="$POSTGRES_USER"
 
 # Create the 'bigquery_tools_user' user and the 'bigquery_tools_db' database.
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    CREATE USER bigquery_tools_user WITH PASSWORD 'orange100.new-pack.club';
+    CREATE USER bigquery_tools_user WITH PASSWORD 'bigquery_tools_user';
     CREATE DATABASE bigquery_tools_db;
     GRANT ALL PRIVILEGES ON DATABASE bigquery_tools_db TO bigquery_tools_user;
 EOSQL
