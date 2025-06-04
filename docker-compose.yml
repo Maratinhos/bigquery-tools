@@ -6,7 +6,7 @@ services:
     container_name: bigquery_tools_db
     environment:
       POSTGRES_USER: bigquery_tools_user
-      POSTGRES_PASSWORD: orange100.new-pack.club
+      POSTGRES_PASSWORD: bigquery_tools_user
       POSTGRES_DB: bigquery_tools_db
     volumes:
       - ./postgresql/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
