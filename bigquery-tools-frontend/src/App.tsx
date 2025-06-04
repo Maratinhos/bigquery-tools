@@ -7,6 +7,7 @@ import MainLayout from './layouts/MainLayout';
 import BigQueryConfigsPage from './pages/BigQueryConfigsPage';
 import SchemaDescriptionPage from './pages/SchemaDescriptionPage';
 import AIChatPage from './pages/AIChatPage';
+import GeminiApiKeyPage from './pages/GeminiApiKeyPage';
 import { ThemeProvider, CssBaseline } from '@mui/material'; // Removed createTheme from here
 import theme from './theme'; // Import the custom theme
 
@@ -41,6 +42,7 @@ function App() {
               <Route path="/bigquery-configs" element={<BigQueryConfigsPage />} />
               <Route path="/schema-description" element={<SchemaDescriptionPage />} />
               <Route path="/ai-chat" element={<AIChatPage />} />
+              <Route path="/gemini-api-key" element={<GeminiApiKeyPage />} />
               {/* Add other protected routes here, e.g.:
               <Route path="/dashboard" element={<HomePage />} />
               <Route path="/bigquery" element={<div>BigQuery Feature</div>} />
